@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: spring-ai-agents
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+      chat:
+        options:
+          model: ${ANTHROPIC_MODEL:claude-sonnet-5-5}
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # H2 has no dedicated schema script; the Postgres one is ANSI SQL H2 also understands,
+            # and JdbcChatMemoryRepositoryDialect already falls back to Postgres syntax for H2.
+            initialize-schema: always
+            schema: classpath:org/springframework/ai/chat/memory/repository/jdbc/schema-postgresql.sql
+  datasource:
+    # Embedded H2, file-backed so chat memory survives restarts. AUTO_SERVER=TRUE lets this same
+    # file be opened concurrently by another process (e.g. a second app instance) without lock
+    # errors - the first opener transparently becomes a TCP server for the others. For a fully
+    # standalone DB server instead of file-based embedded mode, point this at a running H2 TCP
+    # server (jdbc:h2:tcp://host:port/chat-memory) or another RDBMS URL; no code changes needed.
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./agent-data/chat-memory;AUTO_SERVER=TRUE}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+
+server:
+  port: 8080
+
+agents:
+  workspace:
+    # Sandbox root that FileTools/SearchTools/ShellTool are confined to.
+    root: ${AGENTS_WORKSPACE_ROOT:./agent-workspace}

@@ -47,6 +47,8 @@ proxies API calls through the gateway.
 
 ### Gateway admin UI
 
+Full design, use cases and endpoint reference: [gateway-spec.md](gateway-spec.md). Roadmap: [vision.md](vision.md); next-phase spec: [gateway-v2-spec.md](gateway-v2-spec.md).
+
 Open http://localhost:8081/admin/ (local access only) to:
 
 - see backend health/latency, the active key and the rate limit at a glance;

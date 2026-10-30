@@ -11,3 +11,11 @@ frontend/node/
 frontend/dist/
 src/main/resources/static/*
 !src/main/resources/static/.gitkeep
+
+# Gateway admin data (API keys, settings)
+gateway-data/
+
+# Local secrets
+.env
+.env.*
+!.env.example

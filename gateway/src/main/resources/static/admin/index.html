@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateway Admin</title>
+<style>
+  :root { --ink:#1f1d1a; --paper:#faf8f4; --card:#fff; --line:#e3ded4; --accent:#c8551f; --ok:#2e7d32; --bad:#b3261e; --muted:#7a746a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,sans-serif; color:var(--ink); background:var(--paper); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:18px; margin:0; }
+  main { max-width:960px; margin:0 auto; padding:24px; display:grid; gap:20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; }
+  h2 { font-size:15px; margin:0 0 12px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  label { display:grid; gap:4px; font-size:12px; color:var(--muted); }
+  input { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; min-width:200px; }
+  button { font:inherit; padding:7px 12px; border:1px solid var(--ink); background:var(--ink); color:#fff; border-radius:6px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+  button.danger { background:#fff; color:var(--bad); border-color:var(--bad); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; }
+  th { color:var(--muted); font-weight:500; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; color:#fff; }
+  .up { background:var(--ok); } .down { background:var(--bad); } .active { background:var(--accent); }
+  .muted { color:var(--muted); }
+  code, pre { background:#f3efe7; border-radius:6px; padding:2px 6px; font-size:12px; }
+  pre { padding:10px; overflow:auto; margin:8px 0 0; }
+  #msg { min-height:20px; font-size:13px; }
+  #msg.err { color:var(--bad); } #msg.ok { color:var(--ok); }
+  .stats { display:flex; gap:28px; flex-wrap:wrap; }
+  .stats div span { display:block; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><h1>Gateway Admin</h1><span id="msg"></span></header>
+<main>
+  <section>
+    <h2>Status</h2>
+    <div class="stats">
+      <div><span>Backend</span><b id="st-url">…</b></div>
+      <div><span>Health</span><b id="st-health">…</b></div>
+      <div><span>Latency</span><b id="st-latency">…</b></div>
+      <div><span>Active key</span><b id="st-key">…</b></div>
+      <div><span>Rate limit</span><b id="st-rate">…</b></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Routing &amp; limits</h2>
+    <form id="settings-form" class="row">
+      <label>Backend URL<input id="backend-url" placeholder="http://localhost:8080" required></label>
+      <label>Rate limit (requests / minute / client, 0 = off)<input id="rate-limit" type="number" min="0" max="100000" required></label>
+      <button type="submit">Save</button>
+    </form>
+    <p class="muted">Applies immediately to <code>/api/**</code> requests. Persisted across gateway restarts.</p>
+  </section>
+
+  <section>
+    <h2>Anthropic API keys</h2>
+    <table>
+      <thead><tr><th>Label</th><th>Key</th><th>Added</th><th></th></tr></thead>
+      <tbody id="keys"></tbody>
+    </table>
+    <form id="key-form" class="row" style="margin-top:12px" autocomplete="off">
+      <label>Label<input id="key-label" maxlength="60" required></label>
+      <label>API key<input id="key-value" type="password" required autocomplete="new-password"></label>
+      <button type="submit">Add key</button>
+    </form>
+    <p class="muted">The backend reads its key at startup. After switching, restart it with the active key:</p>
+    <pre id="restart-cmd"></pre>
+  </section>
+
+  <section>
+    <h2>Recent requests <span class="muted">(newest first, last 200)</span></h2>
+    <table>
+      <thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th><th>Client</th></tr></thead>
+      <tbody id="requests"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const msg = $('msg');
+
+function flash(text, ok = true) {
+  msg.textContent = text;
+  msg.className = ok ? 'ok' : 'err';
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => { msg.textContent = ''; }, 5000);
+}
+
+async function api(path, options = {}) {
+  const headers = { 'X-Admin-Request': '1' };
+  if (options.body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, { ...options, headers });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((body && body.error) || `Request failed (${res.status})`);
+  return body;
+}
+
+function cell(tr, text) {
+  const td = document.createElement('td');
+  td.textContent = text;
+  tr.appendChild(td);
+  return td;
+}
+
+function button(label, cls, onClick) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.className = cls;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+async function run(action, success) {
+  try { await action(); if (success) flash(success); } catch (e) { flash(e.message, false); }
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('/admin/status');
+    $('st-url').textContent = s.backendUrl;
+    const health = $('st-health');
+    health.textContent = '';
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (s.reachable ? 'up' : 'down');
+    badge.textContent = s.reachable ? `up (HTTP ${s.httpStatus})` : 'unreachable';
+    health.appendChild(badge);
+    $('st-latency').textContent = s.latencyMs == null ? '–' : `${s.latencyMs} ms`;
+    $('st-key').textContent = s.activeKeyLabel || 'none';
+    $('st-rate').textContent = s.rateLimitPerMinute ? `${s.rateLimitPerMinute}/min` : 'off';
+  } catch (e) { flash(e.message, false); }
+}
+
+async function loadSettings() {
+  const s = await api('/admin/settings');
+  $('backend-url').value = s.backendUrl;
+  $('rate-limit').value = s.rateLimitPerMinute;
+}
+
+async function refreshKeys() {
+  const data = await api('/admin/keys');
+  const body = $('keys');
+  body.textContent = '';
+  if (!data.keys.length) {
+    const tr = document.createElement('tr');
+    const td = cell(tr, 'No keys yet — add one below.');
+    td.colSpan = 4; td.className = 'muted';
+    body.appendChild(tr);
+  }
+  for (const k of data.keys) {
+    const tr = document.createElement('tr');
+    const label = cell(tr, k.label);
+    if (k.active) {
+      const b = document.createElement('span');
+      b.className = 'badge active'; b.textContent = 'active'; b.style.marginLeft = '8px';
+      label.appendChild(b);
+    }
+    cell(tr, k.masked);
+    cell(tr, new Date(k.createdAt).toLocaleString());
+    const actions = document.createElement('td');
+    if (!k.active) {
+      actions.appendChild(button('Make active', 'secondary', () =>
+        run(async () => { await api(`/admin/keys/${k.id}/activate`, { method: 'POST' }); await refreshKeys(); await refreshStatus(); },
+            `"${k.label}" is now the active key — restart the backend to use it`)));
+      actions.append(' ');
+    }
+    actions.appendChild(button('Delete', 'danger', () => {
+      if (!confirm(`Delete key "${k.label}"?`)) return;
+      run(async () => { await api(`/admin/keys/${k.id}`, { method: 'DELETE' }); await refreshKeys(); await refreshStatus(); }, 'Key deleted');
+    }));
+    tr.appendChild(actions);
+    body.appendChild(tr);
+  }
+  $('restart-cmd').textContent = `. "${data.activeKeyFile}" && mvn spring-boot:run`;
+}
+
+async function refreshRequests() {
+  const rows = await api('/admin/requests');
+  const body = $('requests');
+  body.textContent = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    cell(tr, new Date(r.time).toLocaleTimeString());
+    cell(tr, r.method);
+    cell(tr, r.path);
+    cell(tr, String(r.status));
+    cell(tr, String(r.durationMs));
+    cell(tr, r.client);
+    body.appendChild(tr);
+  }
+}
+
+$('settings-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  run(async () => {
+    await api('/admin/settings', { method: 'PUT', body: JSON.stringify({
+      backendUrl: $('backend-url').value, rateLimitPerMinute: Number($('rate-limit').value) }) });
+    await loadSettings(); await refreshStatus();
+  }, 'Settings saved');
+});
+
+$('key-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  run(async () => {
+    await api('/admin/keys', { method: 'POST', body: JSON.stringify({ label: $('key-label').value, key: $('key-value').value }) });
+    $('key-form').reset();
+    await refreshKeys(); await refreshStatus();
+  }, 'Key added');
+});
+
+run(async () => { await loadSettings(); await refreshKeys(); await refreshStatus(); await refreshRequests(); });
+setInterval(() => { refreshStatus(); refreshRequests().catch(() => {}); }, 5000);
+</script>
+</body>
+</html>

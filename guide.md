@@ -4,6 +4,180 @@ Building AI agents with Claude in Spring AI involves leveraging native Anthropic
 integrations, the `ChatClient` API, and the specialized **Spring AI Agent Utils**
 library, which brings Claude Code-inspired tools and agent patterns to Java.
 
+## Quick Start: Run and Use It
+
+### Prerequisites
+
+- Java 25 and Maven 3.9+ (Node is downloaded automatically by the Maven build).
+- An Anthropic API key.
+
+### 1. Configure your key
+
+Put your key in a `.env` file at the project root (git-ignored):
+
+```bash
+ANTHROPIC_API_KEY=your-key
+```
+
+Spring Boot doesn't read `.env` by itself, so load it into your shell before
+starting the backend:
+
+```bash
+set -a; . ./.env; set +a
+```
+
+**Notes on `.env` (for later review)**
+
+- Format: plain `NAME=value` lines, no quotes and no spaces around `=`.
+- Only `ANTHROPIC_API_KEY` is used today (the project only includes the
+  Anthropic model). Other entries such as `OPENAI_API_KEY` or `OLLAMA_API_KEY`
+  are ignored until those providers are added.
+- `.env` and `.env.*` are git-ignored (`.env.example` is not). Never commit real
+  keys; restrict the file to your user with `chmod 600 .env`.
+- `.env` is separate from the gateway admin UI's key list. `.env` is your own
+  file that you load manually. The UI's key list is optional and only helps you
+  switch between several Anthropic keys by writing
+  `gateway/gateway-data/active-key.env`.
+- To switch keys via the UI, load `gateway/gateway-data/active-key.env` instead of
+  `.env` before starting the backend. If you load both, whichever you source
+  last wins.
+- The backend reads its key once at startup, so any key change requires a
+  backend restart.
+
+### 2. Start the backend (port 8080)
+
+```bash
+mvn spring-boot:run
+```
+
+This also builds the React UI. Open http://localhost:8080/ for the chat UI
+("Claude Studio"), or call the API directly:
+
+```bash
+curl -X POST http://localhost:8080/api/claude/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Say hi","conversationId":"demo"}'
+```
+
+Reuse the same `conversationId` to keep multi-turn context.
+
+### 3. Start the API gateway (port 8081)
+
+In a second terminal, from the project root:
+
+```bash
+mvn -f gateway/pom.xml spring-boot:run
+```
+
+Send API calls through it instead of straight to the backend:
+
+```bash
+curl -X POST http://localhost:8081/api/claude/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Say hi"}'
+```
+
+### 4. Use the gateway admin UI
+
+Open http://localhost:8081/admin/ (local access only).
+
+| Task | How |
+|---|---|
+| Check the backend is up | The **Status** panel shows health and latency. |
+| Point at another backend | Enter the **Backend URL** and **Save**. It applies immediately. |
+| Limit traffic | Set **Rate limit** (requests/minute per client, `0` = off). Callers over the limit get HTTP 429. |
+| Store API keys | Add a label and key under **Anthropic API keys**. Only the last 4 characters are shown. |
+| Switch the key | Click **Make active** on a key. The backend reads its key at startup, so restart it with the command shown in the UI (`. gateway/gateway-data/active-key.env && mvn spring-boot:run`). |
+| Inspect traffic | **Recent requests** lists the last 200 proxied calls. |
+
+Keys, settings and the generated env file are stored in `gateway/gateway-data/`
+(git-ignored, owner-only permissions, plain text, so use for local development).
+Set `GATEWAY_DATA_DIR` to change the location; the UI always shows the exact
+path in the restart command.
+
+### 5. Frontend development (hot reload)
+
+With the backend and gateway running:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (typically http://localhost:5173/). It proxies `/api`
+through the gateway.
+
+### Configuration reference
+
+| Variable | Default | Used by | Purpose |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | (required) | backend | Anthropic credential |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | backend | Model id |
+| `AGENTS_WORKSPACE_ROOT` | `./agent-workspace` | backend | Sandbox for file/search/shell tools |
+| `BACKEND_URL` | `http://localhost:8080` | gateway | Initial backend (the admin UI can override it) |
+| `SERVER_PORT` | `8081` | gateway | Gateway port |
+| `GATEWAY_DATA_DIR` | `./gateway-data` (relative to the gateway's working dir, i.e. `gateway/gateway-data` with `mvn -f gateway/pom.xml`) | gateway | Keys and settings location |
+| `RATE_LIMIT_PER_MINUTE` | `0` (off) | gateway | Initial rate limit |
+
+### Run the tests
+
+```bash
+mvn test                       # backend
+mvn -f gateway/pom.xml test    # gateway
+```
+
+### Manual test checklist: gateway admin UI
+
+Setup: start the gateway from the project root (`mvn -f gateway/pom.xml spring-boot:run`)
+and open http://localhost:8081/admin/. The backend is optional; without it the
+status simply shows "unreachable". Use fake keys such as `sk-ant-test-1111` so
+no real key is needed. To start from a clean slate, stop the gateway and
+`rm -rf gateway/gateway-data`.
+
+| # | Area | Steps | Expected |
+|---|---|---|---|
+| 1 | Status | Load the page with the backend running, then stop it. | Health badge is green "up (HTTP …)" with latency, then red "unreachable" within about 5s. |
+| 2 | Add key | Add label `personal`, key `sk-ant-test-1111`. | Row shows `••••1111` and an **active** badge; Status shows active key `personal`. |
+| 3 | Second key | Add `work`, key `sk-ant-test-2222`. | Added but not active. |
+| 4 | Switch key | Click **Make active** on `work`. | Badge moves to `work`; message says to restart the backend. |
+| 5 | Env file | `cat gateway/gateway-data/active-key.env` and `ls -l gateway/gateway-data` | Contains `export ANTHROPIC_API_KEY=sk-ant-test-2222`; files are `-rw-------`. |
+| 6 | Key validation | Add a key containing a space, `;`, or fewer than 8 characters; add one with a blank label. | Red error message; nothing is saved. |
+| 7 | Delete key | Delete the active key (confirm the dialog). | Row disappears; Status shows no active key; `active-key.env` is removed. |
+| 8 | Backend URL | Set `http://localhost:9999`, Save. | Status shows the new URL and goes unreachable; `curl -i localhost:8081/api/ping` returns an error. Set it back to `http://localhost:8080` and it recovers. |
+| 9 | Bad URL | Try `ftp://x`, `http://x/path`, `http://u:p@x`. | Each is rejected with an error. |
+| 10 | Rate limit | Set `3`, Save, then run `for i in 1 2 3 4 5; do curl -s -o /dev/null -w '%{http_code} ' localhost:8081/api/ping; done` | Three non-429 codes followed by `429 429`. Set `0` afterwards to turn it off. |
+| 11 | Request log | Run a few `curl localhost:8081/api/...` calls. | Rows appear newest first (within about 5s) with method, path, status, ms, client. |
+| 12 | Persistence | Restart the gateway and reload the page. | Backend URL, rate limit and keys are all still there. |
+| 13 | End to end | With the backend running, `curl -X POST localhost:8081/api/claude/chat -H 'Content-Type: application/json' -d '{"prompt":"Say hi"}'` | A normal chat response; the request shows in the log. |
+
+Security spot checks (all from the same machine):
+
+```bash
+# Wrong Host header -> 403
+curl -i -H 'Host: evil.example.com' localhost:8081/admin/settings
+
+# State change without the admin header -> 403
+curl -i -X PUT localhost:8081/admin/settings \
+  -H 'Content-Type: application/json' -d '{"rateLimitPerMinute":5}'
+
+# Full keys must never appear in the response (only ••••1234 style values)
+curl -s localhost:8081/admin/keys
+```
+
+From another device on your network, `http://<your-LAN-IP>:8081/admin/` must return 403
+while `/api/**` keeps working.
+
+### Troubleshooting
+
+- **Admin page returns 403:** open it via `localhost` on the same machine; other
+  hosts and non-local `Host` headers are blocked on purpose.
+- **Status shows "unreachable":** the backend isn't running at the configured
+  Backend URL.
+- **Chat returns an auth error after switching keys:** the backend must be
+  restarted with the new key loaded.
+- **`ANTHROPIC_API_KEY` missing on startup:** load `.env` first (step 1).
+
 ## Core Concepts & Architecture
 
 ```mermaid
@@ -165,6 +339,9 @@ the architecture above:
   model itself acts as the **task router** by choosing whether to call the
   delegation tool, matching the "Planning → DirectAnswer / Delegated" state
   machine above.
+- [gateway/](gateway/) is a separate Spring Cloud Gateway service. It forwards
+  `/api/**` to the backend (port 8080 by default) and listens on port 8081, so
+  API clients can use it as an optional entry point.
 - [agents/TaskDelegationTools.java](src/main/java/com/example/springaiagents/agents/TaskDelegationTools.java)
   is the orchestrator-facing `Task` tool (`delegateToSubAgent(agentType, task)`)
   that hands a task off to an isolated sub-agent and returns its final result.
@@ -190,8 +367,8 @@ the architecture above:
   session, and renders the running conversation. It's built by
   `frontend-maven-plugin` into `src/main/resources/static` as part of the
   Maven build, so `mvn spring-boot:run` serves it directly; `npm run dev` in
-  `frontend/` gives a hot-reload dev loop against the same backend.
+  `frontend/` gives a hot-reload dev loop whose API requests go through the
+  gateway.
 - Agent Skills (Markdown + YAML front-matter) are still not wired up — that
   remains a natural next step, along with widening the sub-agent roster
   (e.g. a dedicated "data" agent) or adding a web-search tool.
-

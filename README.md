@@ -29,6 +29,49 @@ curl -X POST http://localhost:8080/api/claude/chat \
 Pass a `conversationId` in the request body to keep multi-turn context across
 calls (backed by `ChatMemory`); omit it to use the default conversation.
 
+## API gateway
+
+The standalone Spring Cloud Gateway in [gateway/](gateway/) forwards `/api/**`
+requests to the backend. Run the backend as above, then start the gateway in a
+second terminal:
+
+```bash
+mvn -f gateway/pom.xml spring-boot:run
+```
+
+The gateway listens on port 8081 and preserves the request path. Use
+`http://localhost:8081/api/claude/chat` as the API entry point; set `BACKEND_URL`
+to change the backend address. The backend remains directly reachable on port
+8080. The UI is still served by the backend, while the Vite development server
+proxies API calls through the gateway.
+
+### Gateway admin UI
+
+Open http://localhost:8081/admin/ (local access only) to:
+
+- see backend health/latency, the active key and the rate limit at a glance;
+- switch the **backend URL** and set a per-client **rate limit** (requests per
+  minute, `0` = off) — both apply immediately and persist;
+- manage labelled **Anthropic API keys**: add, delete and mark one as active
+  (the UI only ever shows the last 4 characters);
+- watch the **recent request log** (method, path, status, duration).
+
+The backend reads its Anthropic key at startup, so switching a key takes effect
+when you restart the backend with the active key the UI writes to
+`gateway/gateway-data/active-key.env` (the UI shows the exact command with the
+full path):
+
+```bash
+. gateway/gateway-data/active-key.env && mvn spring-boot:run
+```
+
+Keys, settings and the env file live in `gateway/gateway-data/` when the gateway
+is started with `mvn -f gateway/pom.xml spring-boot:run`, because the default
+`./gateway-data` is relative to the gateway's working directory (override with
+`GATEWAY_DATA_DIR`), are created readable only by your user, and are
+git-ignored. They are stored in plain text — intended for local development.
+`/admin/**` rejects non-loopback clients and non-local `Host` headers.
+
 ## Persistence
 
 Chat memory (for both the orchestrator and any sub-agents it delegates to) is
@@ -52,8 +95,9 @@ export SPRING_DATASOURCE_DRIVER=org.postgresql.Driver
 
 ## Frontend development
 
-For UI iteration with hot reload, run the React app on its own dev server
-(proxies `/api` calls to the backend on port 8080):
+For UI iteration with hot reload, run the backend and API gateway as described
+above, then run the React app on its own dev server. Vite proxies `/api` calls
+to the gateway on port 8081:
 
 ```bash
 cd frontend

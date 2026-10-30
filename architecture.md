@@ -5,14 +5,16 @@ the underlying concepts, see [guide.md](guide.md); for the UI, see [ui-guide.md]
 
 ## System overview
 
-A single Spring Boot process exposes one REST endpoint backed by an orchestrator
-agent (Claude, via Spring AI), which can answer directly or delegate work to one of
-two isolated-context sub-agents. All agents share one persistent chat-memory store
-and one sandboxed filesystem.
+The backend exposes a REST endpoint backed by an orchestrator agent (Claude, via
+Spring AI), which can answer directly or delegate work to one of two
+isolated-context sub-agents. A separate Spring Cloud Gateway can proxy API
+requests to the backend. All agents share one persistent chat-memory store and
+one sandboxed filesystem.
 
 ```mermaid
 flowchart TB
-    Browser["Browser\n(Claude Studio React SPA)"] -->|"POST /api/claude/chat"| Controller["ClaudeController\n(orchestrator ChatClient)"]
+    Browser["Browser\n(Claude Studio React SPA)"] -->|"POST /api/claude/chat"| Gateway["Spring Cloud Gateway\n(:8081, /api/**)"]
+    Gateway -->|"forward /api/**"| Controller["ClaudeController\n(orchestrator ChatClient, :8080)"]
 
     Controller -->|"tool call: delegateToSubAgent"| Delegation["TaskDelegationTools"]
     Delegation --> SubAgents["SubAgentService"]
@@ -39,6 +41,7 @@ flowchart TB
 
 | Component | File | Responsibility |
 |---|---|---|
+| API gateway | [gateway/](gateway/) | Standalone Spring Cloud Gateway service on port `8081`; forwards `/api/**` requests to the backend URL configured by `BACKEND_URL` (default `http://localhost:8080`), switchable at runtime. Also serves a loopback-only admin UI at `/admin/` (backend URL, per-client rate limit, health, recent request log, Anthropic key store; see README). Settings and keys persist in `gateway/gateway-data/` (relative to the gateway's working directory). |
 | Orchestrator | [ClaudeController.java](src/main/java/com/example/springaiagents/ClaudeController.java) | HTTP entry point (`POST /api/claude/chat`). Owns the top-level `ChatClient`, memory advisor, and system prompt that tells the model when to answer directly vs. delegate. Sets `conversationId` on `ConversationContext` for the duration of the request. |
 | Demo tool | [AgentTools.java](src/main/java/com/example/springaiagents/AgentTools.java) | `getCurrentDateTime` — trivial `@Tool` available only to the orchestrator. |
 | Task router / delegation tool | [agents/TaskDelegationTools.java](src/main/java/com/example/springaiagents/agents/TaskDelegationTools.java) | The orchestrator's only other tool: `delegateToSubAgent(agentType, task)`. The model itself decides whether/when to call it — there is no separate rule-based router. |
@@ -57,7 +60,8 @@ flowchart TB
 sequenceDiagram
     actor User
     participant UI as Claude Studio (React)
-    participant C as ClaudeController
+    participant G as Spring Cloud Gateway (:8081)
+    participant C as ClaudeController (:8080)
     participant Ctx as ConversationContext
     participant CC as Orchestrator ChatClient
     participant Tool as TaskDelegationTools
@@ -65,7 +69,8 @@ sequenceDiagram
     participant Mem as JdbcChatMemoryRepository (H2)
 
     User->>UI: type prompt
-    UI->>C: POST /api/claude/chat {prompt, conversationId}
+    UI->>G: POST /api/claude/chat {prompt, conversationId}
+    G->>C: forward request unchanged
     C->>Ctx: set(conversationId)
     C->>CC: prompt().user(...).advisors(CONVERSATION_ID=conversationId)
     CC->>Mem: load prior messages for conversationId
@@ -83,8 +88,13 @@ sequenceDiagram
     end
     CC->>Mem: save new messages for conversationId
     C->>Ctx: clear()
-    C-->>UI: {"response": "..."}
+    C-->>G: {"response": "..."}
+    G-->>UI: {"response": "..."}
 ```
+
+The gateway is an optional API entry point: the backend remains directly
+reachable on port `8080`, and the built UI continues to be served by the backend.
+The Vite development server routes `/api/**` through the gateway on port `8081`.
 
 ## Persistence
 

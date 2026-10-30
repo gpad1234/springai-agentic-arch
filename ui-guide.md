@@ -8,7 +8,7 @@ that provides the "Claude Studio" chat UI for the `spring-ai-agents` backend.
 ```
 frontend/
   index.html          # Vite HTML entry point (title, #root mount point)
-  vite.config.js       # dev proxy (/api -> :8080) + production build output
+  vite.config.js       # dev proxy (/api -> :8081) + production build output
   src/
     main.jsx           # React root render
     App.jsx            # Chat UI: conversation state, composer, suggestions
@@ -55,22 +55,26 @@ So `mvn spring-boot:run` alone serves the built UI at http://localhost:8080/.
 
 ### Option B — hot-reload frontend dev server
 
-For UI iteration, run Vite's dev server directly against a running backend:
+For UI iteration, run Vite's dev server with the backend and API gateway:
 
 ```bash
 # terminal 1 — backend
 export ANTHROPIC_API_KEY=your-api-key
 mvn spring-boot:run
 
-# terminal 2 — frontend with hot reload
+# terminal 2 — API gateway
+mvn -f gateway/pom.xml spring-boot:run
+
+# terminal 3 — frontend with hot reload
 cd frontend
 npm install   # first time only
 npm run dev
 ```
 
 Vite prints a local URL (typically http://localhost:5173/). Requests to
-`/api/**` are proxied to `http://localhost:8080` (configured in
-`vite.config.js`), so the backend must be running for chat requests to work.
+`/api/**` are proxied to the gateway on port 8081 (configured in
+`vite.config.js`), so both the gateway and backend on port 8080 must be running
+for chat requests to work.
 
 ## Other npm scripts
 

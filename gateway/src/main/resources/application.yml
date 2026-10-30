@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: spring-ai-agents-gateway
+  cloud:
+    gateway:
+      routes:
+        # The URI is only the initial default; BackendUrlFilter applies the URL currently set in the admin UI.
+        - id: spring-ai-agents-api
+          uri: ${gateway.backend-url}
+          predicates:
+            - Path=/api/**
+
+gateway:
+  backend-url: ${BACKEND_URL:http://localhost:8080}
+  # Holds settings.json, keys.json and active-key.env (all created with owner-only permissions).
+  data-dir: ${GATEWAY_DATA_DIR:./gateway-data}
+  default-rate-limit-per-minute: ${RATE_LIMIT_PER_MINUTE:0}
+
+server:
+  port: ${SERVER_PORT:8081}

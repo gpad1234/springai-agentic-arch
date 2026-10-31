@@ -108,6 +108,26 @@ npm run dev
 Open the URL Vite prints (typically http://localhost:5173/). It proxies `/api`
 through the gateway.
 
+### Pilot users, activity and usage (gateway admin UI)
+
+Open `http://localhost:8081/admin/` — tabs: Overview, Users, Activity, Usage, Settings (the URL hash keeps your tab on refresh).
+
+- **Overview:** a **Try it** box to send a prompt to the backend from the GUI (bypasses user keys, logged as "(admin test)"); calls today, active users, 7-day error rate and a calls-per-day chart; a **first-run checklist**
+  (backend reachable, Anthropic key added, user created, test call succeeded); **Pause pilot** (all `/api` calls return
+  503 `{"error":"paused"}` until resumed, with a red banner); and **Open pilot report**, a printable one-page summary
+  (`/admin/report`, use the browser's Print / Save as PDF).
+- **Users:** create a named key per pilot user (shown once; only a hash is stored), with a ready-to-copy onboarding
+  message containing a `curl` example. Edit per-minute and per-day limits inline (0 = unlimited), revoke or delete.
+  Turn on **Require a user key** (or start with `REQUIRE_CLIENT_KEY=true`) and callers must send `X-API-Key: gw_...`;
+  missing/revoked keys get HTTP 401. The header is not forwarded upstream.
+- **Activity:** persistent history (`requests.jsonl` in the data dir, 30 days) with filters by user, result and date.
+  Errors are labelled (Backend down = 502, Backend timeout = 504, Bad/missing key, Rate limited, Daily cap reached).
+- **Usage:** calls, errors, rate-limited, unauthorized, p50/p95 latency per user for a date range, plus CSV download.
+  Token and cost figures are not available yet. Daily counts reset if the gateway restarts.
+
+Quick check: create a user, then `curl -H "X-API-Key: <key>" http://localhost:8081/api/...`; without the header you
+should get 401, and with the backend stopped you should get 502 `{"error":"backend_unreachable"}`.
+
 ### Configuration reference
 
 | Variable | Default | Used by | Purpose |
@@ -119,6 +139,7 @@ through the gateway.
 | `SERVER_PORT` | `8081` | gateway | Gateway port |
 | `GATEWAY_DATA_DIR` | `./gateway-data` (relative to the gateway's working dir, i.e. `gateway/gateway-data` with `mvn -f gateway/pom.xml`) | gateway | Keys and settings location |
 | `RATE_LIMIT_PER_MINUTE` | `0` (off) | gateway | Initial rate limit |
+| `REQUIRE_CLIENT_KEY` | `false` | gateway | Initial value of "Require a user key" (UI can change it) |
 
 ### Run the tests
 

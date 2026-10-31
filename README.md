@@ -47,7 +47,7 @@ proxies API calls through the gateway.
 
 ### Gateway admin UI
 
-Full design, use cases and endpoint reference: [gateway-spec.md](gateway-spec.md). Roadmap: [vision.md](vision.md); next-phase spec: [gateway-v2-spec.md](gateway-v2-spec.md).
+Full design, use cases and endpoint reference: [gateway-spec.md](gateway-spec.md). Roadmap: [vision.md](vision.md); next-phase spec: [gateway-v2-spec.md](gateway-v2-spec.md); customer pilot plan: [gateway-pilot-spec.md](gateway-pilot-spec.md).
 
 Open http://localhost:8081/admin/ (local access only) to:
 

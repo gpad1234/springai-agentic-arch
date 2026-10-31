@@ -54,11 +54,11 @@ class StoresTest {
 
     @Test
     void settingsAreValidatedAndPersisted() {
-        SettingsStore store = new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0);
+        SettingsStore store = new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0, false);
 
         store.update("http://example.com:9000/", 30);
 
-        SettingsStore reloaded = new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0);
+        SettingsStore reloaded = new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0, false);
         assertThat(reloaded.get()).isEqualTo(new SettingsStore.Settings("http://example.com:9000", 30));
         assertThatThrownBy(() -> store.update("ftp://example.com", 0)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> store.update("http://example.com/path", 0))
@@ -71,7 +71,7 @@ class StoresTest {
     @Test
     void rateLimiterCountsPerClientAndResetsEachMinute() {
         ProxyFilters.RateLimitFilter filter = new ProxyFilters.RateLimitFilter(
-                new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0));
+                new SettingsStore(mapper, dir.toString(), "http://localhost:8080", 0, false));
         long t = 120_000;
 
         assertThat(filter.allow("a", 2, t)).isTrue();

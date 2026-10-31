@@ -1,7 +1,9 @@
 # Gateway v2 (Phase 1) — Spec
 
 Implements phase 1 of [vision.md](vision.md): **trust and correctness**. Builds on
-the as-built [gateway-spec.md](gateway-spec.md). Status: **proposed, not implemented**.
+the as-built [gateway-spec.md](gateway-spec.md). Status: **proposed, not implemented**. For the customer pilot, see
+[gateway-pilot-spec.md](gateway-pilot-spec.md), which supersedes this spec where they differ
+(notably it drops F4, live key switching).
 
 ## 1. Scope
 

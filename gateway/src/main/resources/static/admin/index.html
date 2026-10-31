@@ -29,14 +29,70 @@
   pre { padding:10px; overflow:auto; margin:8px 0 0; }
   #msg { min-height:20px; font-size:13px; }
   #msg.err { color:var(--bad); } #msg.ok { color:var(--ok); }
+  nav { display:flex; gap:4px; margin-left:16px; }
+  nav button { background:#fff; color:var(--ink); border-color:var(--line); }
+  nav button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  [data-tab][hidden] { display:none; }
+  select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; }
+  .newkey { margin-top:12px; padding:12px; border:1px solid var(--accent); border-radius:8px; background:#fff6f0; }
+  .newkey code { font-size:13px; user-select:all; }
+  .banner { background:var(--bad); color:#fff; padding:10px 24px; display:flex; gap:12px; align-items:center; }
+  .banner[hidden] { display:none; }
+  .banner button { background:#fff; color:var(--bad); border-color:#fff; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:12px; }
+  .kpis div { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .kpis b { display:block; font-size:22px; }
+  .kpis span { font-size:12px; color:var(--muted); }
+  .check { list-style:none; padding:0; margin:0; display:grid; gap:6px; }
+  .check li { display:flex; gap:10px; align-items:center; }
+  .tick { width:20px; height:20px; border-radius:50%; border:2px solid var(--line); display:inline-flex; align-items:center; justify-content:center; font-size:12px; color:#fff; }
+  .tick.done { background:var(--ok); border-color:var(--ok); }
+  .chips { font-size:12px; padding:2px 8px; border-radius:99px; background:#eee; }
+  .chips.ok { background:#e3f3e4; color:var(--ok); } .chips.warn { background:#fff1d6; color:#8a5a00; } .chips.bad { background:#fde4e2; color:var(--bad); }
+  @media (max-width:640px) { main { padding:12px; } input { min-width:0; width:100%; } header { flex-wrap:wrap; } }
   .stats { display:flex; gap:28px; flex-wrap:wrap; }
   .stats div span { display:block; font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
-<header><h1>Gateway Admin</h1><span id="msg"></span></header>
+<div id="paused-banner" class="banner" hidden><b>Pilot paused</b> — all /api calls return 503.<button id="resume-btn" type="button">Resume</button></div>
+<header><h1>Gateway Admin</h1>
+  <nav id="tabs">
+    <button data-go="overview" class="on">Overview</button><button data-go="users">Users</button>
+    <button data-go="activity">Activity</button><button data-go="usage">Usage</button><button data-go="settings">Settings</button>
+  </nav><span id="msg"></span></header>
 <main>
-  <section>
+  <section data-tab="overview">
+    <h2>Pilot at a glance</h2>
+    <div class="kpis">
+      <div><b id="k-today">–</b><span>calls today</span></div>
+      <div><b id="k-users">–</b><span>active users</span></div>
+      <div><b id="k-err">–</b><span>server error rate (7 days)</span></div>
+      <div><b id="k-total">–</b><span>calls (7 days)</span></div>
+    </div>
+    <svg id="chart" viewBox="0 0 420 90" width="100%" height="90" role="img" aria-label="Calls per day, last 7 days"></svg>
+    <div class="row" style="margin-top:10px">
+      <button id="pause-btn" class="danger" type="button">Pause pilot</button>
+      <a href="/admin/report" target="_blank"><button class="secondary" type="button">Open pilot report</button></a>
+    </div>
+  </section>
+
+  <section data-tab="overview">
+    <h2>Try it</h2>
+    <p class="muted">Sends a prompt to the current backend (bypasses user keys; shows in Activity as "(admin test)").</p>
+    <form id="try-form" class="row" autocomplete="off">
+      <label style="flex:1">Prompt<input id="try-prompt" maxlength="4000" required value="Say hello in one sentence." style="width:100%"></label>
+      <button type="submit" id="try-btn">Send</button>
+    </form>
+    <pre id="try-out" hidden></pre>
+  </section>
+
+  <section data-tab="overview">
+    <h2>First-run checklist</h2>
+    <ul class="check" id="checklist"></ul>
+  </section>
+
+  <section data-tab="overview">
     <h2>Status</h2>
     <div class="stats">
       <div><span>Backend</span><b id="st-url">…</b></div>
@@ -44,10 +100,12 @@
       <div><span>Latency</span><b id="st-latency">…</b></div>
       <div><span>Active key</span><b id="st-key">…</b></div>
       <div><span>Rate limit</span><b id="st-rate">…</b></div>
+      <div><span>Pilot</span><b id="st-paused">…</b></div>
+      <div><span>User keys</span><b id="st-users">…</b></div>
     </div>
   </section>
 
-  <section>
+  <section data-tab="settings">
     <h2>Routing &amp; limits</h2>
     <form id="settings-form" class="row">
       <label>Backend URL<input id="backend-url" placeholder="http://localhost:8080" required></label>
@@ -57,7 +115,7 @@
     <p class="muted">Applies immediately to <code>/api/**</code> requests. Persisted across gateway restarts.</p>
   </section>
 
-  <section>
+  <section data-tab="settings">
     <h2>Anthropic API keys</h2>
     <table>
       <thead><tr><th>Label</th><th>Key</th><th>Added</th><th></th></tr></thead>
@@ -72,18 +130,69 @@
     <pre id="restart-cmd"></pre>
   </section>
 
-  <section>
-    <h2>Recent requests <span class="muted">(newest first, last 200)</span></h2>
+  <section data-tab="users" hidden>
+    <h2>Users</h2>
+    <label style="grid-auto-flow:column;justify-content:start;align-items:center;gap:8px;font-size:14px;color:var(--ink)">
+      <input type="checkbox" id="require-key" style="min-width:0"> Require a user key (X-API-Key) on <code>/api/**</code>
+    </label>
+    <p class="muted">When on, calls without a valid, unrevoked key get HTTP 401. Limits of 0 mean unlimited.</p>
     <table>
-      <thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th><th>Client</th></tr></thead>
+      <thead><tr><th>Name</th><th>Key</th><th>Limits</th><th>Today</th><th>Last used</th><th></th></tr></thead>
+      <tbody id="clients"></tbody>
+    </table>
+    <form id="client-form" class="row" style="margin-top:12px" autocomplete="off">
+      <label>Name<input id="client-label" maxlength="60" required placeholder="e.g. Alice (Acme)"></label>
+      <label>Per minute<input id="client-rate" type="number" min="0" value="20" style="min-width:90px"></label>
+      <label>Per day<input id="client-cap" type="number" min="0" value="200" style="min-width:90px"></label>
+      <label>Note<input id="client-note" maxlength="200"></label>
+      <button type="submit">Create user key</button>
+    </form>
+    <div id="newkey" class="newkey" hidden>
+      <b>Copy this key now — it is shown only once.</b>
+      <p><code id="newkey-value"></code> <button id="copy-key" class="secondary" type="button">Copy</button></p>
+      <p class="muted">Message to send to the user:</p>
+      <pre id="onboard"></pre>
+      <button id="copy-onboard" class="secondary" type="button">Copy message</button>
+    </div>
+  </section>
+
+  <section data-tab="activity" hidden>
+    <h2>Activity <span class="muted">(newest first; kept per the retention setting)</span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <label>User<select id="f-user"><option value="">All</option></select></label>
+      <label>Result<select id="f-status"><option value="">All</option><option value="ok">OK</option>
+        <option value="client">Client errors (4xx)</option><option value="error">Server errors (5xx)</option></select></label>
+      <label>From<input id="f-from" type="date" style="min-width:140px"></label>
+      <label>To<input id="f-to" type="date" style="min-width:140px"></label>
+      <button id="f-apply" class="secondary" type="button">Apply</button>
+    </div>
+    <table>
+      <thead><tr><th>Time</th><th>User</th><th>Request</th><th>Result</th><th>ms</th><th>Client</th></tr></thead>
       <tbody id="requests"></tbody>
     </table>
+  </section>
+
+  <section data-tab="usage" hidden>
+    <h2>Usage by user</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label>From<input id="u-from" type="date" style="min-width:140px"></label>
+      <label>To<input id="u-to" type="date" style="min-width:140px"></label>
+      <button id="u-apply" class="secondary" type="button">Apply</button>
+      <button id="u-csv" class="secondary" type="button">Download CSV</button>
+    </div>
+    <table>
+      <thead><tr><th>User</th><th>Calls</th><th>Errors</th><th>Rate-limited</th><th>Unauthorized</th><th>p50 ms</th><th>p95 ms</th><th>Last seen</th></tr></thead>
+      <tbody id="usage"></tbody>
+    </table>
+    <p class="muted">Token counts and cost are not available yet: the backend does not report them to the gateway.</p>
   </section>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const msg = $('msg');
+let lastStatus = null;
+let editingId = null;
 
 function flash(text, ok = true) {
   msg.textContent = text;
@@ -132,6 +241,11 @@ async function refreshStatus() {
     health.appendChild(badge);
     $('st-latency').textContent = s.latencyMs == null ? '–' : `${s.latencyMs} ms`;
     $('st-key').textContent = s.activeKeyLabel || 'none';
+    $('st-paused').textContent = s.paused ? 'paused' : 'running';
+    $('paused-banner').hidden = !s.paused;
+    $('pause-btn').textContent = s.paused ? 'Resume pilot' : 'Pause pilot';
+    lastStatus = s;
+    $('st-users').textContent = s.requireClientKey ? `required (${s.activeClients} active)` : 'not required';
     $('st-rate').textContent = s.rateLimitPerMinute ? `${s.rateLimitPerMinute}/min` : 'off';
   } catch (e) { flash(e.message, false); }
 }
@@ -140,6 +254,144 @@ async function loadSettings() {
   const s = await api('/admin/settings');
   $('backend-url').value = s.backendUrl;
   $('rate-limit').value = s.rateLimitPerMinute;
+  $('require-key').checked = s.requireClientKey;
+}
+
+const RESULTS = { backend_unreachable: 'Backend down', backend_timeout: 'Backend timeout', unauthorized: 'Bad/missing key',
+  rate_limited: 'Rate limited', daily_cap_reached: 'Daily cap reached' };
+const dayAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+
+async function refreshClients() {
+  const list = await api('/admin/client-keys');
+  const body = $('clients');
+  body.textContent = '';
+  if (!list.length) {
+    const tr = document.createElement('tr');
+    const td = cell(tr, 'No users yet — create one below.');
+    td.colSpan = 6; td.className = 'muted';
+    body.appendChild(tr);
+  }
+  const users = $('f-user'), chosen = users.value;
+  users.textContent = '';
+  users.appendChild(new Option('All', ''));
+  for (const c of list) {
+    users.appendChild(new Option(c.label, c.label));
+    const tr = document.createElement('tr');
+    const name = cell(tr, c.label + (c.note ? ` — ${c.note}` : ''));
+    if (c.revoked) {
+      const b = document.createElement('span');
+      b.className = 'badge down'; b.textContent = 'revoked'; b.style.marginLeft = '8px';
+      name.appendChild(b);
+    }
+    cell(tr, c.masked);
+    if (editingId === c.id) {
+      const td = document.createElement('td');
+      const rate = Object.assign(document.createElement('input'), { type: 'number', min: 0, value: c.rateLimitPerMinute });
+      const cap = Object.assign(document.createElement('input'), { type: 'number', min: 0, value: c.dailyCap });
+      rate.style.minWidth = cap.style.minWidth = '70px'; rate.style.width = cap.style.width = '80px';
+      rate.title = 'per minute'; cap.title = 'per day';
+      td.append(rate, ' /min  ', cap, ' /day ');
+      td.appendChild(button('Save', '', () => run(async () => {
+        await api(`/admin/client-keys/${c.id}`, { method: 'PUT', body: JSON.stringify({
+          rateLimitPerMinute: Number(rate.value), dailyCap: Number(cap.value) }) });
+        editingId = null; await refreshClients();
+      }, 'Limits saved')));
+      td.append(' ');
+      td.appendChild(button('Cancel', 'secondary', () => { editingId = null; refreshClients(); }));
+      tr.appendChild(td);
+    } else {
+      cell(tr, `${c.rateLimitPerMinute || '∞'}/min, ${c.dailyCap || '∞'}/day`);
+    }
+    cell(tr, c.dailyCap ? `${c.callsToday}/${c.dailyCap}` : String(c.callsToday));
+    cell(tr, c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleString() : 'never');
+    const actions = document.createElement('td');
+    actions.appendChild(button('Edit limits', 'secondary', () => { editingId = c.id; refreshClients(); }));
+    actions.append(' ');
+    actions.appendChild(button(c.revoked ? 'Restore' : 'Revoke', c.revoked ? 'secondary' : 'danger', () =>
+      run(async () => { await api(`/admin/client-keys/${c.id}`, { method: 'PUT', body: JSON.stringify({ revoked: !c.revoked }) });
+        await refreshClients(); await refreshStatus(); }, c.revoked ? 'Key restored' : 'Key revoked')));
+    actions.append(' ');
+    actions.appendChild(button('Delete', 'danger', () => {
+      if (!confirm(`Delete user "${c.label}"? Their history stays, but the key stops working.`)) return;
+      run(async () => { await api(`/admin/client-keys/${c.id}`, { method: 'DELETE' }); await refreshClients(); await refreshStatus(); }, 'User deleted');
+    }));
+    tr.appendChild(actions);
+    body.appendChild(tr);
+  }
+  users.value = chosen;
+}
+
+function svgEl(name, attrs, text) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', name);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text) el.textContent = text;
+  return el;
+}
+
+async function refreshOverview() {
+  const [o, keys] = await Promise.all([api('/admin/overview'), api('/admin/keys')]);
+  $('k-today').textContent = String(o.callsToday);
+  $('k-users').textContent = String(o.activeUsers);
+  $('k-err').textContent = (o.errorRate * 100).toFixed(1) + '%';
+  $('k-total').textContent = String(o.totalCalls);
+  const chart = $('chart');
+  chart.textContent = '';
+  const max = Math.max(1, ...o.days.map((d) => d.calls));
+  o.days.forEach((d, i) => {
+    const h = Math.round((d.calls / max) * 60), x = i * 60 + 10;
+    chart.appendChild(svgEl('rect', { x, y: 70 - h, width: 40, height: h, fill: '#c8551f', rx: 3 }));
+    chart.appendChild(svgEl('text', { x: x + 20, y: 66 - h, 'text-anchor': 'middle', 'font-size': 10, fill: '#1f1d1a' }, String(d.calls)));
+    chart.appendChild(svgEl('text', { x: x + 20, y: 84, 'text-anchor': 'middle', 'font-size': 9, fill: '#7a746a' }, d.date.slice(5)));
+  });
+  const s = lastStatus || await api('/admin/status');
+  const items = [
+    ['Backend is reachable', s.reachable, 'Start it: mvn spring-boot:run (port 8080)'],
+    ['Anthropic key added', keys.keys.some((k) => k.active), 'Settings tab → add a key'],
+    ['At least one user created', o.activeUsers > 0, 'Users tab → create a user key'],
+    ['A test call succeeded', o.successfulCalls > 0, 'Send a call with the user key (see onboarding message)'],
+  ];
+  const list = $('checklist');
+  list.textContent = '';
+  for (const [label, done, hint] of items) {
+    const li = document.createElement('li');
+    const t = document.createElement('span');
+    t.className = 'tick' + (done ? ' done' : ''); t.textContent = done ? '✓' : '';
+    const text = document.createElement('span');
+    text.textContent = label;
+    li.append(t, text);
+    if (!done) { const m = document.createElement('span'); m.className = 'muted'; m.textContent = '— ' + hint; li.appendChild(m); }
+    list.appendChild(li);
+  }
+}
+
+async function setPaused(paused) {
+  await api('/admin/settings', { method: 'PUT', body: JSON.stringify({ paused }) });
+  await refreshStatus();
+}
+$('pause-btn').addEventListener('click', () => {
+  const paused = !(lastStatus && lastStatus.paused);
+  if (paused && !confirm('Pause the pilot? All /api calls will return 503 until you resume.')) return;
+  run(() => setPaused(paused), paused ? 'Pilot paused' : 'Pilot resumed');
+});
+$('resume-btn').addEventListener('click', () => run(() => setPaused(false), 'Pilot resumed'));
+
+async function refreshUsage() {
+  const rows = (await api(`/admin/usage?from=${$('u-from').value}&to=${$('u-to').value}`)).rows;
+  const body = $('usage');
+  body.textContent = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = cell(tr, 'No calls in this period.');
+    td.colSpan = 8; td.className = 'muted';
+    body.appendChild(tr);
+  }
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    cell(tr, r.user); cell(tr, String(r.calls)); cell(tr, String(r.errors)); cell(tr, String(r.limited));
+    cell(tr, String(r.unauthorized)); cell(tr, String(r.p50Ms)); cell(tr, String(r.p95Ms));
+    cell(tr, new Date(r.lastSeen).toLocaleString());
+    body.appendChild(tr);
+  }
 }
 
 async function refreshKeys() {
@@ -176,19 +428,27 @@ async function refreshKeys() {
     tr.appendChild(actions);
     body.appendChild(tr);
   }
-  $('restart-cmd').textContent = `. "${data.activeKeyFile}" && mvn spring-boot:run`;
+  const hasActive = data.keys.some((k) => k.active);
+  $('restart-cmd').textContent = hasActive ? `. "${data.activeKeyFile}" && mvn spring-boot:run` : 'Add a key first — nothing to restart with yet.';
 }
 
 async function refreshRequests() {
-  const rows = await api('/admin/requests');
+  const q = new URLSearchParams({ user: $('f-user').value, status: $('f-status').value, from: $('f-from').value, to: $('f-to').value });
+  const rows = await api('/admin/requests?' + q);
   const body = $('requests');
   body.textContent = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = cell(tr, 'No matching requests.');
+    td.colSpan = 6; td.className = 'muted';
+    body.appendChild(tr);
+  }
   for (const r of rows) {
     const tr = document.createElement('tr');
-    cell(tr, new Date(r.time).toLocaleTimeString());
-    cell(tr, r.method);
-    cell(tr, r.path);
-    cell(tr, String(r.status));
+    cell(tr, new Date(r.time).toLocaleString());
+    cell(tr, r.user || '–');
+    cell(tr, `${r.method} ${r.path}`);
+    cell(tr, r.errorCode ? `${r.status} ${RESULTS[r.errorCode] || r.errorCode}` : String(r.status));
     cell(tr, String(r.durationMs));
     cell(tr, r.client);
     body.appendChild(tr);
@@ -213,8 +473,68 @@ $('key-form').addEventListener('submit', (e) => {
   }, 'Key added');
 });
 
-run(async () => { await loadSettings(); await refreshKeys(); await refreshStatus(); await refreshRequests(); });
-setInterval(() => { refreshStatus(); refreshRequests().catch(() => {}); }, 5000);
+$('require-key').addEventListener('change', (e) => {
+  const on = e.target.checked;
+  run(async () => { await api('/admin/settings', { method: 'PUT', body: JSON.stringify({ requireClientKey: on }) });
+    await loadSettings(); await refreshStatus(); }, on ? 'User keys are now required' : 'User keys are no longer required');
+});
+
+$('client-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  run(async () => {
+    const created = await api('/admin/client-keys', { method: 'POST', body: JSON.stringify({
+      label: $('client-label').value, note: $('client-note').value,
+      rateLimitPerMinute: Number($('client-rate').value), dailyCap: Number($('client-cap').value) }) });
+    $('client-form').reset(); $('client-rate').value = 20; $('client-cap').value = 200;
+    $('newkey-value').textContent = created.key;
+    $('onboard').textContent = `Hi! Here is access to the AI gateway pilot.\n\nURL: ${location.protocol}//${location.hostname}:${location.port || 80}/api/...  (replace the host if you are not on this machine)\nYour key: ${created.key}\n\nSend the key as a header on every call:\n  curl -H "X-API-Key: ${created.key}" -H "Content-Type: application/json" \\\n       -d '{"prompt":"Hello"}' ${location.protocol}//${location.hostname}:${location.port || 80}/api/claude/chat\n\nLimits: ${created.client.rateLimitPerMinute || 'unlimited'} calls/minute, ${created.client.dailyCap || 'unlimited'} calls/day.`;
+    $('newkey').hidden = false;
+    await refreshClients(); await refreshStatus();
+  }, 'User created');
+});
+
+$('try-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const out = $('try-out'), btn = $('try-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  out.hidden = false; out.textContent = 'Waiting for the model…';
+  run(async () => {
+    const r = await api('/admin/test-call', { method: 'POST', body: JSON.stringify({ prompt: $('try-prompt').value }) });
+    let text = r.body;
+    try { text = JSON.parse(r.body).response ?? r.body; } catch (_) { /* not JSON */ }
+    out.textContent = `HTTP ${r.status || 'error'} · ${r.durationMs} ms\n\n${text}`;
+    await refreshOverview();
+  }).finally(() => { btn.disabled = false; btn.textContent = 'Send'; });
+});
+$('copy-onboard').addEventListener('click', () =>
+  run(async () => { await navigator.clipboard.writeText($('onboard').textContent); }, 'Message copied'));
+$('copy-key').addEventListener('click', () =>
+  run(async () => { await navigator.clipboard.writeText($('newkey-value').textContent); }, 'Copied'));
+$('f-apply').addEventListener('click', () => run(refreshRequests));
+$('u-apply').addEventListener('click', () => run(refreshUsage));
+$('u-csv').addEventListener('click', () => { location.href = `/admin/usage.csv?from=${$('u-from').value}&to=${$('u-to').value}`; });
+
+let tab = location.hash.slice(1) || 'overview';
+function show(name) {
+  tab = name;
+  history.replaceState(null, '', '#' + name);
+  if (name !== 'users') $('newkey').hidden = true;
+  document.querySelectorAll('[data-tab]').forEach((el) => { el.hidden = el.dataset.tab !== name && !(name === 'overview' && el.dataset.tab === 'overview'); });
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.go === name));
+  refreshTab();
+}
+function refreshTab() {
+  const jobs = { overview: [refreshStatus, refreshOverview], users: [refreshClients], activity: [refreshClients, refreshRequests],
+    usage: [refreshUsage], settings: [loadSettings, refreshKeys] }[tab];
+  jobs.forEach((j) => j().catch((e) => flash(e.message, false)));
+}
+$('tabs').addEventListener('click', (e) => { if (e.target.dataset.go) show(e.target.dataset.go); });
+
+$('u-from').value = dayAgo(6);
+$('u-to').value = dayAgo(0);
+loadSettings().catch(() => {});
+show(['overview', 'users', 'activity', 'usage', 'settings'].includes(tab) ? tab : 'overview');
+setInterval(() => { if (tab !== 'users' && tab !== 'settings') refreshTab(); else if (tab === 'users' && !editingId) refreshClients().catch(() => {}); }, 5000);
 </script>
 </body>
 </html>

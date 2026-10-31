@@ -77,7 +77,7 @@ hand the API to other people or services without handing them your Anthropic key
 
 | Phase | Theme | Contents | Status |
 |---|---|---|---|
-| **1** | Trust and correctness | Correct `502`/`504` mapping; loopback-bind option; client API keys with per-client rate limits; live key switching | Specified in [gateway-v2-spec.md](gateway-v2-spec.md) |
+| **1** | Trust and correctness | Correct `502`/`504` mapping; loopback-bind option; client API keys with per-client rate limits; live key switching | Specified in [gateway-v2-spec.md](gateway-v2-spec.md); **superseded for the customer pilot** by [gateway-pilot-spec.md](gateway-pilot-spec.md), which drops live key switching and pulls in persistent history, per-user usage, and quick start |
 | 2 | Visibility | Persistent history, usage/cost view, charts, export | Not specified |
 | 3 | Resilience and routing | Health checks and fail-over, timeouts/retries, multiple routes, canary, Actuator | Not specified |
 | 4 | Platform | Provider switching, SSE streaming, Redis shared state, admin auth, encrypted storage, Docker/CI | Not specified |

@@ -15,6 +15,7 @@ gateway:
   # Holds settings.json, keys.json and active-key.env (all created with owner-only permissions).
   data-dir: ${GATEWAY_DATA_DIR:./gateway-data}
   default-rate-limit-per-minute: ${RATE_LIMIT_PER_MINUTE:0}
+  require-client-key: ${REQUIRE_CLIENT_KEY:false}
 
 server:
   port: ${SERVER_PORT:8081}

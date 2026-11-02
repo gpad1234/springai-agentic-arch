@@ -21,17 +21,17 @@ class StoresTest {
     void keysAreMaskedActivatedAndMirroredToEnvFile() throws Exception {
         KeyStore store = new KeyStore(mapper, dir.toString());
 
-        KeyStore.KeyView first = store.add("personal", "sk-ant-first-key-1111");
-        KeyStore.KeyView second = store.add("work", "sk-ant-second-key-2222");
+        KeyStore.KeyView first = store.add("personal", "sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111");
+        KeyStore.KeyView second = store.add("work", "sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222");
 
         assertThat(first.active()).isTrue();
         assertThat(second.active()).isFalse();
         assertThat(first.masked()).isEqualTo("••••1111").doesNotContain("sk-ant");
         assertThat(Files.readString(dir.resolve("active-key.env")))
-                .isEqualTo("export ANTHROPIC_API_KEY=sk-ant-first-key-1111\n");
+                .isEqualTo("export ANTHROPIC_API_KEY=sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1111\n");
 
         store.activate(second.id());
-        assertThat(Files.readString(dir.resolve("active-key.env"))).contains("sk-ant-second-key-2222");
+        assertThat(Files.readString(dir.resolve("active-key.env"))).contains("sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222");
 
         KeyStore reloaded = new KeyStore(mapper, dir.toString());
         assertThat(reloaded.list()).extracting(KeyStore.KeyView::label).containsExactly("personal", "work");
@@ -47,8 +47,11 @@ class StoresTest {
         KeyStore store = new KeyStore(mapper, dir.toString());
 
         assertThatThrownBy(() -> store.add("bad", "abc\nexport X=1")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> store.add("bad", "4krxeQnD-s" + "x".repeat(85)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("sk-ant-");
+        assertThatThrownBy(() -> store.add("bad", "sk-ant-truncated")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> store.add("bad", "short")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> store.add(" ", "sk-ant-valid-key-1")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> store.add(" ", "sk-ant-api03-cccccccccccccccccccccccccccccccccccccccccccc1")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> store.activate("missing")).isInstanceOf(IllegalArgumentException.class);
     }
 

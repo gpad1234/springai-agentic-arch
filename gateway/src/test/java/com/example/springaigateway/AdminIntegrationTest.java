@@ -86,13 +86,13 @@ class AdminIntegrationTest {
     @Test
     void keyEndpointsNeverReturnFullKeys() {
         client().post().uri("/admin/keys").header("X-Admin-Request", "1").contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"label\":\"test\",\"key\":\"sk-ant-integration-9999\"}")
+                .bodyValue("{\"label\":\"test\",\"key\":\"sk-ant-api03-integrationintegrationintegration9999\"}")
                 .exchange().expectStatus().isCreated();
 
         String body = client().get().uri("/admin/keys").exchange().expectStatus().isOk()
                 .expectBody(String.class).returnResult().getResponseBody();
 
-        assertThat(body).contains("••••9999").doesNotContain("sk-ant-integration");
+        assertThat(body).contains("••••9999").doesNotContain("sk-ant-api03");
     }
 
     @Test

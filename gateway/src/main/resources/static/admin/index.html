@@ -123,7 +123,7 @@
     </table>
     <form id="key-form" class="row" style="margin-top:12px" autocomplete="off">
       <label>Label<input id="key-label" maxlength="60" required></label>
-      <label>API key<input id="key-value" type="password" required autocomplete="new-password"></label>
+      <label>API key (starts with sk-ant-)<input id="key-value" type="password" placeholder="sk-ant-api03-…" required autocomplete="new-password"></label>
       <button type="submit">Add key</button>
     </form>
     <p class="muted">The backend reads its key at startup. After switching, restart it with the active key:</p>
@@ -412,7 +412,7 @@ async function refreshKeys() {
       b.className = 'badge active'; b.textContent = 'active'; b.style.marginLeft = '8px';
       label.appendChild(b);
     }
-    cell(tr, k.masked);
+    cell(tr, `${k.masked} (${k.length} chars)`);
     cell(tr, new Date(k.createdAt).toLocaleString());
     const actions = document.createElement('td');
     if (!k.active) {
@@ -502,7 +502,9 @@ $('try-form').addEventListener('submit', (e) => {
     const r = await api('/admin/test-call', { method: 'POST', body: JSON.stringify({ prompt: $('try-prompt').value }) });
     let text = r.body;
     try { text = JSON.parse(r.body).response ?? r.body; } catch (_) { /* not JSON */ }
-    out.textContent = `HTTP ${r.status || 'error'} · ${r.durationMs} ms\n\n${text}`;
+    const hint = r.status === 500 ? '\n\nHint: the backend failed. The most common cause is an invalid or truncated Anthropic key (it must start with sk-ant- and be ~100 characters). Check the backend log.'
+      : r.status === 0 ? '\n\nHint: start the backend (port 8080) or fix the Backend URL in Settings.' : '';
+    out.textContent = `HTTP ${r.status || 'error'} · ${r.durationMs} ms\n\n${text}${hint}`;
     await refreshOverview();
   }).finally(() => { btn.disabled = false; btn.textContent = 'Send'; });
 });

@@ -24,7 +24,7 @@ public class KeyStore {
     public record ApiKey(String id, String label, String key, String createdAt) {
     }
 
-    public record KeyView(String id, String label, String masked, String createdAt, boolean active) {
+    public record KeyView(String id, String label, String masked, int length, String createdAt, boolean active) {
     }
 
     record State(List<ApiKey> keys, String activeId) {
@@ -32,6 +32,8 @@ public class KeyStore {
 
     // Restricting the alphabet also guarantees the generated env file can't contain shell metacharacters.
     private static final Pattern KEY_PATTERN = Pattern.compile("[A-Za-z0-9_-]{8,256}");
+    private static final String KEY_PREFIX = "sk-ant-";
+    private static final int MIN_KEY_LENGTH = 40; // real Anthropic keys are ~100 characters
     private static final int MAX_LABEL = 60;
 
     private final ObjectMapper mapper;
@@ -74,6 +76,10 @@ public class KeyStore {
         if (!KEY_PATTERN.matcher(cleanKey).matches()) {
             throw new IllegalArgumentException("Key must be 8-256 characters: letters, digits, '-' or '_'");
         }
+        if (!cleanKey.startsWith(KEY_PREFIX) || cleanKey.length() < MIN_KEY_LENGTH) {
+            throw new IllegalArgumentException("That does not look like an Anthropic API key: it should start with '"
+                    + KEY_PREFIX + "' and be about 100 characters long (you entered " + cleanKey.length() + ")");
+        }
         ApiKey entry = new ApiKey(UUID.randomUUID().toString(), cleanLabel, cleanKey, Instant.now().toString());
         State next = new State(new ArrayList<>(state.keys()), state.activeId());
         next.keys().add(entry);
@@ -102,7 +108,7 @@ public class KeyStore {
 
     private KeyView view(ApiKey key) {
         String tail = key.key().substring(Math.max(0, key.key().length() - 4));
-        return new KeyView(key.id(), key.label(), "••••" + tail, key.createdAt(), key.id().equals(state.activeId()));
+        return new KeyView(key.id(), key.label(), "••••" + tail, key.key().length(), key.createdAt(), key.id().equals(state.activeId()));
     }
 
     private State persist(State next) {

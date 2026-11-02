@@ -11,6 +11,12 @@ library, which brings Claude Code-inspired tools and agent patterns to Java.
 - Java 25 and Maven 3.9+ (Node is downloaded automatically by the Maven build).
 - An Anthropic API key.
 
+### Fastest path: `./run.sh`
+
+Copy `.env.example` to `.env`, add your key (it must start with `sk-ant-`), then run `./run.sh`.
+It loads `.env` (or a key chosen in the admin UI), starts the backend (8080) and the gateway
+(8081), and Ctrl+C stops both. Admin UI: http://localhost:8081/admin/. The steps below do the same by hand.
+
 ### 1. Configure your key
 
 Put your key in a `.env` file at the project root (git-ignored):

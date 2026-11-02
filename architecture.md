@@ -37,11 +37,71 @@ flowchart TB
     Code -.->|"Anthropic API"| Claude
 ```
 
+## API gateway architecture
+
+The gateway ([gateway/](gateway/), port `8081`) has two faces: the proxied `/api/**` path used by pilot
+users, and a loopback-only `/admin/**` console. Filter order matters: lower numbers run first.
+
+```mermaid
+flowchart LR
+    subgraph Callers
+        User["Pilot user / app\n(X-API-Key: gw_...)"]
+        Admin["Operator browser\n(localhost only)"]
+    end
+
+    subgraph GW["Spring Cloud Gateway :8081"]
+        direction TB
+        subgraph Proxy["/api/** filter chain"]
+            direction TB
+            F1["1. RequestLogFilter (-3)\nrecords status, timing, user;\nmaps connect/timeout errors to 502/504"]
+            F2["2. RateLimitFilter (-2)\nper-client-IP window, 429"]
+            F3["3. ClientKeyFilter (-1)\npause (503), key check (401),\nper-user limit + daily cap (429),\nstrips X-API-Key"]
+            F4["4. BackendUrlFilter\nrewrites target to current backend URL"]
+            F1 --> F2 --> F3 --> F4
+        end
+        subgraph AdminSide["/admin/** (AdminAccessFilter: loopback + Host + X-Admin-Request)"]
+            direction TB
+            AC["AdminController\nstatus, settings, keys, client-keys,\nrequests, usage, report, test-call"]
+            UI["Static admin UI\n(Overview, Users, Activity, Usage, Settings)"]
+        end
+        subgraph Stores["Stores (gateway-data/, files 0600)"]
+            direction TB
+            SS["SettingsStore\nsettings.json"]
+            KS["KeyStore\nkeys.json + active-key.env"]
+            CS["ClientKeyStore\nclient-keys.json (hashes only)"]
+            RL["RequestLog\nrequests.jsonl (no bodies)"]
+        end
+    end
+
+    Backend["spring-ai-agents backend :8080\n(/api/claude/chat)"]
+    Anthropic["Anthropic API"]
+
+    User --> F1
+    F4 --> Backend
+    Backend --> Anthropic
+    Admin --> UI
+    UI --> AC
+    AC --> SS & KS & CS & RL
+    AC -->|"health probe, Try it"| Backend
+    F2 -.-> SS
+    F3 -.-> SS
+    F3 -.-> CS
+    F4 -.-> SS
+    F1 -.-> RL
+    KS -. "source active-key.env, then restart backend" .-> Backend
+```
+
+Notes:
+
+- The backend reads `ANTHROPIC_API_KEY` only at startup, so switching the active key in the admin UI means restarting the backend with `active-key.env` sourced (dotted line); the gateway never talks to Anthropic itself.
+- Only metadata is stored: request logs hold method, path (no query), status, timing, user and client IP. Client keys are stored as SHA-256 hashes.
+- Behaviour details are in [gateway-spec.md](gateway-spec.md) and [gateway-pilot-spec.md](gateway-pilot-spec.md).
+
 ## Components
 
 | Component | File | Responsibility |
 |---|---|---|
-| API gateway | [gateway/](gateway/) | Standalone Spring Cloud Gateway service on port `8081`; forwards `/api/**` requests to the backend URL configured by `BACKEND_URL` (default `http://localhost:8080`), switchable at runtime. Also serves a loopback-only admin UI at `/admin/` (backend URL, per-client rate limit, health, recent request log, Anthropic key store; see README and [gateway-spec.md](gateway-spec.md)). Settings and keys persist in `gateway/gateway-data/` (relative to the gateway's working directory). |
+| API gateway | [gateway/](gateway/) | Standalone Spring Cloud Gateway service on port `8081`; forwards `/api/**` requests to the backend URL configured by `BACKEND_URL` (default `http://localhost:8080`), switchable at runtime. Also serves a loopback-only admin UI at `/admin/` (backend URL, rate limit, health, Anthropic key store, pilot users with per-user limits, persistent activity history, usage and report, pause switch; see [gateway diagram](#api-gateway-architecture), README and [gateway-spec.md](gateway-spec.md)). Settings and keys persist in `gateway/gateway-data/` (relative to the gateway's working directory). |
 | Orchestrator | [ClaudeController.java](src/main/java/com/example/springaiagents/ClaudeController.java) | HTTP entry point (`POST /api/claude/chat`). Owns the top-level `ChatClient`, memory advisor, and system prompt that tells the model when to answer directly vs. delegate. Sets `conversationId` on `ConversationContext` for the duration of the request. |
 | Demo tool | [AgentTools.java](src/main/java/com/example/springaiagents/AgentTools.java) | `getCurrentDateTime` — trivial `@Tool` available only to the orchestrator. |
 | Task router / delegation tool | [agents/TaskDelegationTools.java](src/main/java/com/example/springaiagents/agents/TaskDelegationTools.java) | The orchestrator's only other tool: `delegateToSubAgent(agentType, task)`. The model itself decides whether/when to call it — there is no separate rule-based router. |

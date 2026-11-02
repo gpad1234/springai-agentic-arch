@@ -16,6 +16,7 @@ src/main/resources/static/*
 gateway-data/
 
 # Local secrets
+gateway/src/keys-dialog.txt
 .env
 .env.*
 !.env.example

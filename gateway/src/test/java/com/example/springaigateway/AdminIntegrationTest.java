@@ -86,7 +86,7 @@ class AdminIntegrationTest {
     @Test
     void keyEndpointsNeverReturnFullKeys() {
         client().post().uri("/admin/keys").header("X-Admin-Request", "1").contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"label\":\"test\",\"key\":\"sk-ant-api03-integrationintegrationintegration9999\"}")
+                .bodyValue("{\"label\":\"test\",\"key\":\"sk-ant-" + "i".repeat(45) + "9999\"}")
                 .exchange().expectStatus().isCreated();
 
         String body = client().get().uri("/admin/keys").exchange().expectStatus().isOk()
